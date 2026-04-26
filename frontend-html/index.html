@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nifty Options Replay</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.0.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .scroll-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .scroll-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        const API_URL = "http://127.0.0.1:8000";
+
+        // --- ICONS ---
+        const PlayIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="5 3 19 12 5 21 5 3" /></svg>);
+        const RefreshCwIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>);
+        const ArrowRightIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>);
+        const CheckCircleIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>);
+        const ClockIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>);
+        const XIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>);
+
+        // --- COMPONENTS ---
+
+        const Spinner = () => (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+        );
+
+        const StatCard = ({ label, value, type = 'neutral' }) => {
+            let valueClass = 'text-white';
+            if (type === 'pnl') {
+                valueClass = value > 0 ? 'text-emerald-400' : (value < 0 ? 'text-rose-400' : 'text-slate-400');
+            }
+            return (
+                <div className="glass-panel p-4 rounded-xl flex flex-col min-w-[140px]">
+                    <span className="text-slate-400 text-sm font-medium mb-1">{label}</span>
+                    <span className={`text-2xl font-bold tracking-tight ${valueClass}`}>
+                        {type === 'pnl' ? '₹ ' : ''}{typeof value === 'number' ? value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value}
+                    </span>
+                </div>
+            );
+        };
+
+        // --- CHART COMPONENT ---
+        const Chart = ({ data }) => {
+            const chartContainerRef = useRef();
+            const chartRef = useRef();
+            const seriesRef = useRef();
+
+            useEffect(() => {
+                const container = chartContainerRef.current;
+                if (!container) return;
+
+                const chart = LightweightCharts.createChart(container, {
+                    layout: { background: { type: 'solid', color: '#020617' }, textColor: '#94a3b8' },
+                    grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                    timeScale: { borderColor: '#334155', timeVisible: true },
+                    rightPriceScale: { borderColor: '#334155' },
+                    localization: {
+                        timeFormatter: (time) => {
+                            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                            let dateStr, d;
+                            if (typeof time === 'string') {
+                                dateStr = time;
+                                d = new Date(time + 'T00:00:00Z');
+                            } else if (typeof time === 'object' && time.year) {
+                                dateStr = `${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`;
+                                d = new Date(Date.UTC(time.year, time.month - 1, time.day));
+                            } else {
+                                d = new Date(time * 1000);
+                                dateStr = d.toISOString().slice(0, 10);
+                            }
+                            return `${dateStr} ${days[d.getUTCDay()]}`;
+                        }
+                    }
+                });
+
+                const series = chart.addCandlestickSeries({
+                    upColor: '#10b981', downColor: '#f43f5e',
+                    borderVisible: false, wickUpColor: '#10b981', wickDownColor: '#f43f5e',
+                });
+
+                chartRef.current = chart;
+                seriesRef.current = series;
+
+                const resizeObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+                            chart.applyOptions({ width: entry.contentRect.width, height: entry.contentRect.height });
+                        }
+                    }
+                });
+                resizeObserver.observe(container);
+
+                return () => {
+                    resizeObserver.disconnect();
+                    chart.remove();
+                };
+            }, []);
+
+            // Helper to convert date object to string
+            const formatDate = (d) => {
+                if (typeof d === 'string') return d;
+                if (d && typeof d === 'object' && d.year) {
+                    // Format: {year: 2021, month: 1, day: 21} -> "2021-01-21"
+                    return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+                }
+                return String(d);
+            };
+
+            useEffect(() => {
+                if (seriesRef.current && data) {
+                    try {
+                        // Convert date objects to strings for Lightweight Charts
+                        const chartData = data.map(candle => ({
+                            ...candle,
+                            time: formatDate(candle.time)
+                        }));
+                        seriesRef.current.setData(chartData);
+                    } catch (e) {
+                        console.error("Chart Data Error:", e);
+                    }
+                }
+            }, [data]);
+
+            // Expose reset method via ref if needed, or simple double-click handler
+            const handleDoubleClick = () => {
+                if (chartRef.current) chartRef.current.timeScale().fitContent();
+            };
+
+            return <div className="w-full h-full relative" ref={chartContainerRef} onDoubleClick={handleDoubleClick} />;
+        };
+
+        // --- MAIN APP ---
+
+        const App = () => {
+            // Unidirectional State
+            const [view, setView] = useState('SELECTION'); // SELECTION, REPLAY
+            const [dates, setDates] = useState([]);
+            const [selectedDate, setSelectedDate] = useState('');
+            const [sessionId, setSessionId] = useState(null);
+
+            // Replay Data
+            const [candleData, setCandleData] = useState([]); // Array of {time, open, high, low, close}
+            const [replayState, setReplayState] = useState('INIT');
+            const [pnl, setPnl] = useState({ total: 0, unrealized: 0 });
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+
+            // Strategy State
+            const [activeStrategy, setActiveStrategy] = useState(null);
+            const [previewData, setPreviewData] = useState(null);
+            const [selectedDirection, setSelectedDirection] = useState(null);
+            const [strikeAdjustments, setStrikeAdjustments] = useState({}); // { legIndex: offset }
+            const [lotMultiplier, setLotMultiplier] = useState(1); // 1, 2, 3, 5, 10
+
+            // Fetch Dates on Load
+            useEffect(() => {
+                fetch(`${API_URL}/market/history`)
+                    .then(r => r.json())
+                    .then(data => {
+                        // Backend returns array of candles. We just need dates.
+                        const dateList = Array.isArray(data) ? data.map(d => d.date) : [];
+                        setDates(dateList);
+                    })
+                    .catch(e => console.error("Date Fetch Error", e));
+            }, []);
+
+            // Start Session
+            const startSession = async () => {
+                if (!selectedDate) return;
+                setLoading(true);
+                setError(null);
+                try {
+                    const res = await fetch(`${API_URL}/session/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ start_date: selectedDate })
+                    });
+                    const data = await res.json();
+
+                    if (data.session_id) {
+                        setSessionId(data.session_id);
+                        setReplayState(data.current_state);
+
+                        // Parse Initial Candles
+                        const initialCandles = (data.visible_candles || []).map(c => ({
+                            time: c.date,
+                            open: c.open, high: c.high, low: c.low, close: c.close
+                        }));
+                        setCandleData(initialCandles);
+                        setView('REPLAY');
+                    } else {
+                        setError(data.message || "Failed to start session (No Session ID)");
+                    }
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Next Step
+            const nextStep = async () => {
+                if (!sessionId) return;
+                setLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/session/next`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: sessionId, action: 'NEXT' })
+                    });
+                    const data = await res.json();
+
+                    if (data.state) {
+                        setReplayState(data.state);
+
+                        // Update PnL from response (new fields)
+                        setPnl({
+                            total: data.realized_pnl || 0,
+                            unrealized: data.unrealized_pnl || 0
+                        });
+
+                        // Update active strategy from response (includes current prices)
+                        if (data.active_positions && data.active_positions.length > 0) {
+                            setActiveStrategy(data.active_positions[0]);
+                        } else {
+                            setActiveStrategy(null);
+                        }
+
+                        // Merge candle data
+                        if (data.spot_candle) {
+                            setCandleData(prev => {
+                                const newCandle = {
+                                    time: data.spot_candle.date,
+                                    open: data.spot_candle.open,
+                                    high: data.spot_candle.high,
+                                    low: data.spot_candle.low,
+                                    close: data.spot_candle.close
+                                };
+                                if (prev.length > 0 && prev[prev.length - 1].time === newCandle.time) {
+                                    return [...prev.slice(0, -1), newCandle];
+                                }
+                                return [...prev, newCandle];
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("nextStep exception:", e);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Strategy Preview
+            const previewStrategy = async (direction, lots = lotMultiplier) => {
+                if (!sessionId) return;
+                setSelectedDirection(direction);
+                setStrikeAdjustments({});
+                try {
+                    const res = await fetch(`${API_URL}/strategy/preview`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            direction_state: direction,
+                            quantity_multiplier: lots
+                        })
+                    });
+                    const data = await res.json();
+                    setPreviewData(data);
+                } catch (e) {
+                    console.error("Preview error:", e);
+                }
+            };
+
+            // Execute Strategy
+            const executeStrategy = async () => {
+                if (!sessionId || selectedDirection === null) return;
+                setLoading(true);
+                try {
+                    // Build strike overrides if any adjustments were made
+                    let overrides = null;
+                    if (previewData && Object.keys(strikeAdjustments).length > 0) {
+                        overrides = previewData.legs.map((leg, idx) => ({
+                            type: leg.option_type,
+                            strike: leg.strike + (strikeAdjustments[idx] || 0) * 50,
+                            qty: leg.qty
+                        }));
+                    }
+
+                    const res = await fetch(`${API_URL}/strategy/execute`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            direction_state: selectedDirection,
+                            quantity_multiplier: lotMultiplier,
+                            strike_overrides: overrides
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'ACTIVE') {
+                        setActiveStrategy({ id: data.strategy_id, direction_state: selectedDirection, legs: previewData?.legs });
+                        setReplayState('STRATEGY_ACTIVE');
+                    }
+                    setPreviewData(null);
+                    setSelectedDirection(null);
+                } catch (e) {
+                    console.error("Execute error:", e);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Close Strategy
+            const closeStrategy = async () => {
+                if (!sessionId || !activeStrategy) return;
+                setLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/strategy/close`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: sessionId })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'FLAT') {
+                        // Use total_realized from server response
+                        setPnl({ total: data.total_realized || 0, unrealized: 0 });
+                        setActiveStrategy(null);
+                    }
+                } catch (e) {
+                    console.error("Close error:", e);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Cancel preview
+            const cancelPreview = () => {
+                setPreviewData(null);
+                setSelectedDirection(null);
+                setStrikeAdjustments({});
+            };
+
+            // Adjust strike for a leg
+            const adjustStrike = (legIndex, delta) => {
+                setStrikeAdjustments(prev => {
+                    const current = prev[legIndex] || 0;
+                    const newVal = current + delta;
+                    if (Math.abs(newVal) > 5) return prev; // Limit to ±5
+                    return { ...prev, [legIndex]: newVal };
+                });
+            };
+
+            // Strategy names and colors
+            const STRATEGIES = [
+                { dir: -2, name: 'Strong Bear', color: 'bg-red-600 hover:bg-red-500', desc: 'Put Buy' },
+                { dir: -1, name: 'Bear', color: 'bg-red-500/70 hover:bg-red-400/70', desc: 'Bear Call Spread' },
+                { dir: 0, name: 'Neutral', color: 'bg-slate-600 hover:bg-slate-500', desc: 'Short Strangle' },
+                { dir: 1, name: 'Bull', color: 'bg-emerald-500/70 hover:bg-emerald-400/70', desc: 'Bull Put Spread' },
+                { dir: 2, name: 'Strong Bull', color: 'bg-emerald-600 hover:bg-emerald-500', desc: 'Call Buy' },
+            ];
+
+            const canExecute = replayState === 'DAY_OPEN_REVEALED' || replayState === 'DAY_CLOSE_REVEALED';
+
+            // Reset Zoom Helper
+            const resetZoom = () => {
+                // This would need a ref to Grid -> Chart, simpler to just double click for now
+                // Or we can add a global event
+            };
+
+            if (view === 'SELECTION') {
+                return (
+                    <div className="flex items-center justify-center min-h-screen bg-slate-950 p-6">
+                        <div className="glass-panel max-w-md w-full p-8 rounded-2xl shadow-2xl">
+                            <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Nifty Options Replay</h1>
+                            <p className="text-slate-400 mb-8">Select a starting date to begin your session.</p>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-2">Start Date</label>
+                                    <select
+                                        value={selectedDate}
+                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                        className="w-full bg-slate-800 border-slate-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                    >
+                                        <option value="">Select a date...</option>
+                                        {dates.map(date => (
+                                            <option key={date} value={date}>{date}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    onClick={startSession}
+                                    disabled={!selectedDate || loading}
+                                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-900/20 active:scale-95 flex justify-center items-center gap-2"
+                                >
+                                    {loading ? <Spinner /> : <>Start Session <ArrowRightIcon className="w-5 h-5" /></>}
+                                </button>
+                                {error && <div className="text-rose-400 text-sm p-3 bg-rose-500/10 rounded-lg">{error}</div>}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // REPLAY VIEW
+            return (
+                <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden font-sans">
+                    {/* SIDEBAR: Controls & Stats */}
+                    <div className="w-[380px] flex-none flex flex-col bg-slate-900/50 border-r border-slate-800 backdrop-blur-sm z-20 shadow-xl">
+                        {/* Header */}
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/80">
+                            <div>
+                                <h2 className="font-bold text-white">Replay: {selectedDate}</h2>
+                                <div className="text-xs text-slate-500 font-mono mt-0.5">{replayState}</div>
+                            </div>
+                            <button onClick={() => window.location.reload()} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+                                <span className="text-xs">Exit</span>
+                            </button>
+                        </div>
+
+                        {/* Scrollable Content */}
+                        <div className="flex-1 overflow-y-auto scroll-hide p-4 space-y-4">
+                            {/* PnL Stats - 2 columns only */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <StatCard label="Realized" value={pnl.total} type="pnl" />
+                                <StatCard label="Unrealized" value={pnl.unrealized} type="pnl" />
+                            </div>
+
+                            {/* Active Position with full leg details */}
+                            {activeStrategy && (
+                                <div className="bg-blue-900/30 rounded-xl p-4 border border-blue-700/50">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="text-sm font-semibold text-blue-300">Active Position</h3>
+                                        <span className="text-xs bg-blue-600 px-2 py-0.5 rounded-full">
+                                            {STRATEGIES.find(s => s.dir === activeStrategy.direction_state)?.name}
+                                        </span>
+                                    </div>
+                                    {activeStrategy.legs && (
+                                        <div className="space-y-2">
+                                            {activeStrategy.legs.map((leg, i) => {
+                                                const mtm = leg.current_price
+                                                    ? ((leg.current_price - leg.entry_price) * leg.qty).toFixed(2)
+                                                    : null;
+                                                return (
+                                                    <div key={i} className="bg-slate-800/50 rounded-lg p-2 text-xs">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className={`font-bold ${leg.qty > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                {leg.qty > 0 ? 'BUY' : 'SELL'} {Math.abs(leg.qty)} {leg.option_type}
+                                                            </span>
+                                                            <span className="text-slate-400">Exp: {leg.expiry?.slice(5)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-slate-300 font-mono">
+                                                            <span>Strike: {leg.strike}</span>
+                                                            <span>Entry: ₹{leg.entry_price?.toFixed(2)}</span>
+                                                        </div>
+                                                        {leg.current_price && (
+                                                            <div className="flex justify-between font-mono mt-1">
+                                                                <span className="text-slate-400">Current: ₹{leg.current_price?.toFixed(2)}</span>
+                                                                <span className={mtm >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                                                    MTM: ₹{mtm}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={closeStrategy}
+                                        disabled={loading}
+                                        className="mt-3 w-full py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold rounded-lg transition-all"
+                                    >
+                                        {loading ? <Spinner /> : 'Close Position'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Strategy Buttons */}
+                            {!activeStrategy && !previewData && (
+                                <div className="bg-slate-800/20 rounded-xl p-4 border border-slate-800">
+                                    <h3 className="text-sm font-semibold text-slate-400 mb-3">
+                                        {canExecute ? 'Select Strategy' : 'Strategies (waiting for market data)'}
+                                    </h3>
+                                    <div className="grid grid-cols-5 gap-2">
+                                        {STRATEGIES.map(strat => (
+                                            <button
+                                                key={strat.dir}
+                                                onClick={() => previewStrategy(strat.dir)}
+                                                disabled={!canExecute || loading}
+                                                className={`${strat.color} disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-semibold py-3 px-1 rounded-lg transition-all flex flex-col items-center gap-1`}
+                                                title={strat.desc}
+                                            >
+                                                <span className="text-lg font-bold">{strat.dir > 0 ? '+' : ''}{strat.dir}</span>
+                                                <span className="text-[10px] opacity-80">{strat.name.split(' ')[0]}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Preview Panel */}
+                            {previewData && (
+                                <div className="bg-amber-900/20 rounded-xl p-4 border border-amber-700/50">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="text-sm font-semibold text-amber-300">
+                                            Preview: {STRATEGIES.find(s => s.dir === selectedDirection)?.desc}
+                                        </h3>
+                                        <button onClick={cancelPreview} className="text-slate-400 hover:text-white">
+                                            <XIcon className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2 mb-4">
+                                        {previewData.legs?.map((leg, i) => {
+                                            const adj = strikeAdjustments[i] || 0;
+                                            const adjustedStrike = leg.strike + adj * 50;
+                                            return (
+                                                <div key={i} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-2">
+                                                    <span className="text-sm font-mono">
+                                                        <span className={leg.qty > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                                            {leg.qty > 0 ? 'BUY' : 'SELL'} {Math.abs(leg.qty)}
+                                                        </span>
+                                                        {' '}{leg.option_type}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => adjustStrike(i, -1)}
+                                                            className="w-6 h-6 bg-slate-700 hover:bg-slate-600 rounded text-white text-sm"
+                                                        >-</button>
+                                                        <span className="font-mono text-sm w-16 text-center">{adjustedStrike}</span>
+                                                        <button
+                                                            onClick={() => adjustStrike(i, 1)}
+                                                            className="w-6 h-6 bg-slate-700 hover:bg-slate-600 rounded text-white text-sm"
+                                                        >+</button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Lot Selector */}
+                                    <div className="flex items-center justify-between my-3">
+                                        <span className="text-xs text-slate-400">Lots:</span>
+                                        <div className="flex gap-1">
+                                            {[1, 2, 3, 5, 10].map(n => (
+                                                <button
+                                                    key={n}
+                                                    onClick={() => { setLotMultiplier(n); previewStrategy(selectedDirection, n); }}
+                                                    className={`px-3 py-1 text-xs rounded ${lotMultiplier === n ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                                >{n}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="text-sm text-slate-300 mb-3 p-2 bg-slate-800/50 rounded">
+                                        Margin: <span className="text-amber-400 font-semibold">₹{previewData.margin_required?.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={cancelPreview}
+                                            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg"
+                                        >Cancel</button>
+                                        <button
+                                            onClick={executeStrategy}
+                                            disabled={loading}
+                                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg"
+                                        >{loading ? <Spinner /> : 'Execute'}</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Controls */}
+                            <div className="mt-4">
+                                <button
+                                    onClick={nextStep}
+                                    disabled={loading}
+                                    className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-900/20 active:scale-95 transition-all flex justify-center items-center gap-2"
+                                >
+                                    {loading ? <Spinner /> : <>Next Candle <ArrowRightIcon className="w-5 h-5" /></>}
+                                </button>
+                                <p className="text-center text-xs text-slate-500 mt-2">
+                                    {replayState === 'INIT' ? 'Click to reveal opening price' :
+                                        replayState === 'DAY_OPEN_REVEALED' ? 'Select strategy or reveal close' :
+                                            replayState === 'DAY_CLOSE_REVEALED' ? 'Enter overnight or advance' :
+                                                replayState === 'STRATEGY_ACTIVE' ? 'Position active - advance or close' :
+                                                    'Click to advance'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Debug Footer */}
+                        <div className="p-2 bg-black text-[10px] font-mono text-green-500 opacity-50 hover:opacity-100 transition-opacity">
+                            CMD: {replayState} | Candles: {candleData.length} <br />
+                            Last: {candleData.length > 0 ? JSON.stringify(candleData[candleData.length - 1].time) : 'None'}
+                        </div>
+                    </div>
+
+                    {/* MAIN CHART AREA */}
+                    <div className="flex-1 relative bg-slate-950 flex flex-col">
+                        {/* Toolbar */}
+                        <div className="h-12 border-b border-slate-800 flex items-center px-4 justify-end gap-2 bg-slate-900/30">
+                            <span className="text-xs text-slate-500">Double-click chart to reset zoom</span>
+                        </div>
+
+                        {/* Chart Container */}
+                        <div className="flex-1 relative overflow-hidden">
+                            <Chart data={candleData} />
+
+                            {/* Candle Count Overlay */}
+                            <div className="absolute top-4 right-4 z-10 bg-slate-900/80 backdrop-blur px-3 py-1 rounded-full border border-slate-700 text-xs text-slate-400 font-mono shadow-lg pointer-events-none">
+                                {candleData.length} Candles
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Error Boundary for debugging
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                console.error("React Error:", error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen bg-red-950 text-white p-8">
+                            <h1 className="text-2xl font-bold mb-4">Something went wrong</h1>
+                            <pre className="bg-black p-4 rounded text-sm overflow-auto">
+                                {this.state.error?.toString()}
+                            </pre>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="mt-4 px-4 py-2 bg-red-600 rounded"
+                            >
+                                Reload
+                            </button>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
+    </script>
+</body>
+
+</html>

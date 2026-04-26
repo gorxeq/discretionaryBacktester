@@ -1,0 +1,150 @@
+.strategy-panel {
+  margin-bottom: 1rem;
+  padding: 1.5rem;
+  background: #2a2e3a;
+  border-radius: 8px;
+}
+
+.strategy-panel h3 {
+  margin: 0 0 0.5rem 0;
+  color: #d1d4dc;
+}
+
+.caption {
+  color: #888;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.strategy-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.strategy-button {
+  padding: 1rem;
+  background: #1e222d;
+  border: 2px solid #3a3e4a;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #d1d4dc;
+}
+
+.strategy-button:hover:not(:disabled) {
+  background: #2a2e3a;
+  transform: translateY(-2px);
+}
+
+.strategy-button.selected {
+  border-width: 3px;
+  background: #2a2e3a;
+}
+
+.strategy-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.strategy-label {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.strategy-desc {
+  font-size: 0.875rem;
+  color: #888;
+}
+
+.quantity-input {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.quantity-input label {
+  color: #d1d4dc;
+}
+
+.quantity-input input {
+  padding: 0.5rem;
+  background: #1e222d;
+  color: #d1d4dc;
+  border: 1px solid #3a3e4a;
+  border-radius: 4px;
+  width: 80px;
+}
+
+.preview-panel {
+  background: #1e222d;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.preview-panel h4 {
+  margin: 0 0 0.75rem 0;
+  color: #d1d4dc;
+}
+
+.preview-info {
+  color: #d1d4dc;
+  margin-bottom: 1rem;
+}
+
+.preview-info p {
+  margin: 0.5rem 0;
+}
+
+.preview-info ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.preview-info li {
+  margin: 0.25rem 0;
+}
+
+.execute-button {
+  width: 100%;
+  padding: 0.75rem;
+  background: #089981;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.execute-button:hover:not(:disabled) {
+  background: #00d4aa;
+}
+
+.execute-button:disabled {
+  background: #3a3e4a;
+  cursor: not-allowed;
+}
+
+.skip-button {
+  width: 100%;
+  padding: 0.75rem;
+  background: #3a3e4a;
+  color: #d1d4dc;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.skip-button:hover:not(:disabled) {
+  background: #4a4e5a;
+}
+
+.skip-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

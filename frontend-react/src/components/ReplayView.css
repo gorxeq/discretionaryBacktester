@@ -1,0 +1,129 @@
+.replay-view {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0c0d10;
+  color: #d1d4dc;
+}
+
+.replay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: #1e222d;
+  border-bottom: 1px solid #2a2e3a;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-left h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.state-badge {
+  background: #2a2e3a;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #d1d4dc;
+}
+
+.exit-button {
+  padding: 0.5rem 1rem;
+  background: #f23645;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.exit-button:hover {
+  background: #d32f2f;
+}
+
+.pnl-panel {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem 2rem;
+  background: #1e222d;
+  border-bottom: 1px solid #2a2e3a;
+}
+
+.pnl-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pnl-metric label {
+  font-size: 0.875rem;
+  color: #888;
+}
+
+.pnl-metric span {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.pnl-metric .positive {
+  color: #089981;
+}
+
+.pnl-metric .negative {
+  color: #f23645;
+}
+
+.chart-container {
+  flex: 1;
+  width: 100%;
+  min-height: 600px;
+  position: relative;
+}
+
+.replay-controls {
+  padding: 1rem 2rem;
+  background: #1e222d;
+  border-top: 1px solid #2a2e3a;
+}
+
+.next-button {
+  width: 100%;
+  padding: 1rem;
+  background: #089981;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.next-button:hover:not(:disabled) {
+  background: #00d4aa;
+}
+
+.next-button:disabled {
+  background: #3a3e4a;
+  cursor: not-allowed;
+}
+
+.active-strategy {
+  background: #2a2e3a;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.active-strategy p {
+  margin: 0;
+  color: #d1d4dc;
+}
